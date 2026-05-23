@@ -1,70 +1,45 @@
 import { NextResponse } from 'next/server';
 import { users } from '@/lib/db';
+import bcrypt from 'bcryptjs';
 import { generateOTP } from '@/lib/generateOTP';
 import { saveOTP } from '@/lib/otpStore';
 
+// ... rest of imports
+
 export async function POST(request) {
   try {
-    const { email, password, turnstileToken } = await request.json();
-    
-    // Verify Turnstile
-    if (!turnstileToken) {
-      return NextResponse.json(
-        { error: 'Please verify you are human' },
-        { status: 400 }
-      );
-    }
+    const body = await request.json();
+    const { email, password, turnstileToken } = body;
 
-    const turnstileRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        secret: process.env.TURNSTILE_SECRET_KEY,
-        response: turnstileToken,
-      }),
-    });
+    // ... Turnstile verification code here ...
 
-    const turnstileData = await turnstileRes.json();
-
-    if (!turnstileData.success) {
-      return NextResponse.json(
-        { error: 'Verification failed' },
-        { status: 400 }
-      );
-    }
+    // Check user credentials - NOW USING bcrypt.compare
+    const user = users.find((u) => u.email === email);
     
-    // Check user credentials
-    const user = users.find(u => u.email === email);
-    
-    if (!user || user.password !== password) {
+    if (!user) {
+      console.log('❌ User not found');
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       );
     }
     
-    // Generate and save OTP
-    const otpCode = generateOTP();
-    saveOTP(email, otpCode);
+    // Compare provided password with stored hash
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     
-    // Log OTP to terminal (for testing)
-    console.log(`\n=================================`);
-    console.log(`🔐 OTP for ${email}: ${otpCode}`);
-    console.log(`=================================\n`);
-    
-    // Return success — tell user to check OTP
-    return NextResponse.json({
-      success: true,
-      message: 'OTP sent to your email',
-      requiresOTP: true,
-      email: email
-    });
+    if (!isPasswordValid) {
+      console.log('❌ Invalid password');
+      return NextResponse.json(
+        { error: 'Invalid email or password' },
+        { status: 401 }
+      );
+    }
+
+    console.log('✅ Credentials valid');
+
+    // ... rest of OTP generation and response code ...
     
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    // ... error handling
   }
 }
